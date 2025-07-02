@@ -16,64 +16,85 @@ $pipelines = @(
 )
 
 # Function to get stored credential
-function Get-StoredCredential {
+function Get-SavedCredential {
     param([string]$Target)
     
     try {
-        $cmdOutput = cmdkey /list:$Target 2>$null
-        if ($cmdOutput -match "Password: (.+)") {
-            $password = $matches[1].Trim()
-            $securePassword = ConvertTo-SecureString -String $password -AsPlainText -Force
-            return New-Object System.Management.Automation.PSCredential("pat", $securePassword)
+        # Try using CredentialManager module first - install if not available
+        if (-not (Get-Module -ListAvailable -Name CredentialManager)) {
+            Write-Host "CredentialManager module not found. Installing..." -ForegroundColor Yellow
+            try {
+                Install-Module -Name CredentialManager -Force -Scope CurrentUser -ErrorAction Stop
+                Write-Host "CredentialManager module installed successfully." -ForegroundColor Green
+            }
+            catch {
+                Write-Warning "Failed to install CredentialManager module: $($_.Exception.Message)"
+            }
         }
-        else {
-            throw "Credential not found"
+        
+        if (Get-Module -ListAvailable -Name CredentialManager) {
+            Import-Module CredentialManager -ErrorAction Stop
+            # Use the module's Get-StoredCredential function
+            $storedCred = Get-StoredCredential -Target $Target -Type Generic -ErrorAction Stop
+            if ($storedCred) {
+                return $storedCred
+            }
         }
+        
+        # If module approach fails, throw to trigger manual entry
+        throw "Automatic retrieval failed"
     }
     catch {
-        throw "Failed to retrieve credential: $_"
-    }
-}
-
-# Prompt for organization and project if not set
-if ($organization -eq "your-org-name" -or [string]::IsNullOrEmpty($organization)) {
-    $organization = Read-Host "Enter your Azure DevOps organization name"
-}
-
-if ($project -eq "your-project-name" -or [string]::IsNullOrEmpty($project)) {
-    $project = Read-Host "Enter your Azure DevOps project name"
-}
-
-# Set default PAT name if not provided
-if ($patName -eq "your-pat-name" -or [string]::IsNullOrEmpty($patName)) {
-    $tempPatName = "AzureDevOps-PAT-$organization"
-    # Check if the credential exists
-    $cmdOutput = cmdkey /list:$tempPatName 2>$null
-    if ($cmdOutput -match "Target: $tempPatName") {
-        $patName = $tempPatName
-    }
-    else {
-        # If not found, prompt for a new PAT name
-        $patName = Read-Host "Enter a name for your Personal Access Token (PAT) in Credential Manager (default: AzureDevOps-PAT-$organization)"
-        if ([string]::IsNullOrEmpty($patName)) {
-            $patName = "AzureDevOps-PAT-$organization"
+        # Final fallback: Check if credential exists
+        $cmdOutput = cmdkey /list:$Target 2>$null
+        if ($cmdOutput -match "Target: $Target") {
+            throw "Credential exists but cannot be retrieved automatically. Please enter manually."
+        }
+        else {
+            throw "Credential not found in Windows Credential Manager"
         }
     }
 }
 
 # Retrieve PAT from Windows Credential Manager or prompt user
 try {
-    $credential = Get-StoredCredential -Target $patName
+    # Prompt for organization and project if not set
+    if ($organization -eq "your-org-name" -or [string]::IsNullOrEmpty($organization)) {
+        $organization = Read-Host "Enter your Azure DevOps organization name"
+    }
+
+    if ($project -eq "your-project-name" -or [string]::IsNullOrEmpty($project)) {
+        $project = Read-Host "Enter your Azure DevOps project name"
+    }    
+
+    # default $patName to "AzureDevOps-PAT" if not provided
+    if ($patName -eq "your-pat-name" -or [string]::IsNullOrEmpty($patName)) {
+        $tempPatName = "AzureDevOps-PAT-$organization"
+        # check to see if the credential exists
+        $cmdOutput = cmdkey /list:$tempPatName 2>$null
+        if ($cmdOutput -match "Target: $tempPatName") {
+            $patName = $tempPatName
+        }
+        else {
+            # If not found, prompt for a new PAT name
+            $patName = Read-Host "Enter a name for your Personal Access Token (PAT) in Credential Manager (default: AzureDevOps-PAT-$organization)"
+            if ([string]::IsNullOrEmpty($patName)) {
+                $patName = "AzureDevOps-PAT-$organization"
+            }
+        }
+    }    Write-Host "Attempting to retrieve PAT from Credential Manager using name: '$patName'" -ForegroundColor Cyan
+    $credential = Get-SavedCredential -Target $patName
     $pat = $credential.GetNetworkCredential().Password
     Write-Host "Successfully retrieved PAT from Credential Manager" -ForegroundColor Green
 }
 catch {
+    Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "PAT not found in Credential Manager. Please provide your credentials." -ForegroundColor Yellow
 
     # Prompt for PAT securely
     $securePatString = Read-Host "Enter your Personal Access Token (PAT)" -AsSecureString
     $pat = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePatString))
-    
+
     # Ask if user wants to save credentials
     $saveCredentials = Read-Host "Would you like to save these credentials to Windows Credential Manager? (y/n)"
     if ($saveCredentials -eq 'y' -or $saveCredentials -eq 'Y') {
@@ -83,7 +104,7 @@ catch {
             Write-Host "Credentials saved to Windows Credential Manager" -ForegroundColor Green
         }
         catch {
-            Write-Warning "Failed to save credentials to Credential Manager, but continuing with session..."
+            Write-Error "Failed to save credentials to Credential Manager: $($_.Exception.Message)"
         }
     }
 }
@@ -124,13 +145,12 @@ function Start-Pipeline {
 
 # Function to check pipeline status
 function Wait-PipelineCompletion {
-    param($RunId, $PipelineName)
-    
-    $uri = "https://dev.azure.com/$organization/$project/_apis/pipelines/runs/$RunId?api-version=7.0"
+    param($RunId, $PipelineName, $PipelineId)
+    $uri = "https://dev.azure.com/$organization/$project/_apis/pipelines/$PipelineId/runs/$RunId`?api-version=7.0"
     
     try {
         do {
-            Start-Sleep -Seconds 30
+            Start-Sleep -Seconds 60
             $run = Invoke-RestMethod -Uri $uri -Headers $headers
             Write-Host "$PipelineName status: $($run.state)" -ForegroundColor Cyan
         } while ($run.state -eq "inProgress")
@@ -154,16 +174,18 @@ function Wait-PipelineCompletion {
     }
     catch {
         Write-Error "Failed to check status for $PipelineName`: $($_.Exception.Message)"
+        Write-Error "Run ID: $RunId, Pipeline ID: $PipelineId, Organization: $organization, Project: $project, URI: $uri"
         return $false
     }
 }
 
 # Execute pipelines in sequence
 foreach ($pipeline in $pipelines) {
+    Write-Host "Processing pipeline: $($pipeline.Name) (ID: $($pipeline.Id))" -ForegroundColor Cyan
     $runId = Start-Pipeline -PipelineId $pipeline.Id -PipelineName $pipeline.Name -BranchRef $pipeline.Ref
     
     if ($runId) {
-        $success = Wait-PipelineCompletion -RunId $runId -PipelineName $pipeline.Name
+        $success = Wait-PipelineCompletion -RunId $runId -PipelineName $pipeline.Name -PipelineId $pipeline.Id
         
         if (-not $success) {
             Write-Host "Pipeline sequence stopped due to failure in $($pipeline.Name)" -ForegroundColor Red
