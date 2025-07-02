@@ -92,7 +92,7 @@ catch {
     Write-Host "PAT not found in Credential Manager. Please provide your credentials." -ForegroundColor Yellow
 
     # Prompt for PAT securely
-    $securePatString = Read-Host "Enter your Personal Access Token (PAT)" -AsSecureString
+    $securePatString = Read-Host "Enter your Personal Access Token (PAT) from https://dev.azure.com/$organization/_usersSettings/tokens with Scope for Build Read and Execute" -AsSecureString
     $pat = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePatString))
 
     # Ask if user wants to save credentials
