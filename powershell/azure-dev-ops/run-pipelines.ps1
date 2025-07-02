@@ -11,7 +11,11 @@ $patName = "your-pat-name" # Optional: Name for the PAT in Credential Manager
 # Pipeline definitions (replace with your actual pipeline IDs)
 $pipelines = @(
     @{ Name = "Pipeline 1"; Id = 123; Ref = "refs/heads/main" }, 
-    @{ Name = "Pipeline 2"; Id = 456; Ref = "refs/heads/develop" }, 
+    @{ Name = "Pipeline 2"; Id = 456; Ref = "refs/heads/develop",         
+        TemplateParameters = @{
+            # "key" = "value" 
+        } 
+    }, 
     @{ Name = "Pipeline 3"; Id = 789; Ref = "refs/heads/feature-branch" } 
 )
 
@@ -118,9 +122,11 @@ $headers = @{
 
 # Function to trigger pipeline
 function Start-Pipeline {
-    param($PipelineId, $PipelineName, $BranchRef = "refs/heads/main")
+    param($PipelineId, $PipelineName, $BranchRef = "refs/heads/main", $TemplateParameters = @{})
     
     $uri = "https://dev.azure.com/$organization/$project/_apis/pipelines/$PipelineId/runs?api-version=7.0"
+    
+    # Build the request body
     $body = @{
         resources = @{
             repositories = @{
@@ -129,12 +135,28 @@ function Start-Pipeline {
                 }
             }
         }
-    } | ConvertTo-Json -Depth 3
+        variables = @{}
+    }
+    
+    # Add template parameters if provided
+    if ($TemplateParameters.Count -gt 0) {
+        $body.templateParameters = $TemplateParameters
+        Write-Host "Template parameters: $($TemplateParameters | ConvertTo-Json -Compress)" -ForegroundColor Gray
+    }
+    
+    $bodyJson = $body | ConvertTo-Json -Depth 3
     
     try {
         Write-Host "Starting $PipelineName on branch $BranchRef..." -ForegroundColor Yellow
-        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
+        Write-Host "Request body: $bodyJson" -ForegroundColor Gray
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $bodyJson
         Write-Host "Successfully started $PipelineName (Run ID: $($response.id))" -ForegroundColor Green
+        
+        # Get the actual run details to see what branch it's using
+        $runUri = "https://dev.azure.com/$organization/$project/_apis/pipelines/$PipelineId/runs/$($response.id)?api-version=7.0"
+        $runDetails = Invoke-RestMethod -Uri $runUri -Headers $headers
+        Write-Host "Actual branch used: $($runDetails.resources.repositories.self.refName)" -ForegroundColor Cyan
+        
         return $response.id
     }
     catch {
@@ -182,7 +204,7 @@ function Wait-PipelineCompletion {
 # Execute pipelines in sequence
 foreach ($pipeline in $pipelines) {
     Write-Host "Processing pipeline: $($pipeline.Name) (ID: $($pipeline.Id))" -ForegroundColor Cyan
-    $runId = Start-Pipeline -PipelineId $pipeline.Id -PipelineName $pipeline.Name -BranchRef $pipeline.Ref
+    $runId = Start-Pipeline -PipelineId $pipeline.Id -PipelineName $pipeline.Name -BranchRef $pipeline.Ref -TemplateParameters $pipeline.TemplateParameters
     
     if ($runId) {
         $success = Wait-PipelineCompletion -RunId $runId -PipelineName $pipeline.Name -PipelineId $pipeline.Id
