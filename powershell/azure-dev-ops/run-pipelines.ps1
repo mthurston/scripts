@@ -1,4 +1,7 @@
 # run various Azure DevOps pipelines for prosperity
+# This script triggers multiple Azure DevOps pipelines in sequence and waits for their completion.
+# It retrieves a Personal Access Token (PAT) from Windows Credential Manager or prompts the user for it.
+# The required scope for the PAT is 'Build (read and execute)'.
 
 # Configuration
 $organization = "your-org-name"
@@ -12,7 +15,7 @@ $pipelines = @(
     @{ Name = "Pipeline 3"; Id = 789; Ref = "refs/heads/feature-branch" } 
 )
 
-# Function to get stored credential (moved to top)
+# Function to get stored credential
 function Get-StoredCredential {
     param([string]$Target)
     
@@ -32,34 +35,34 @@ function Get-StoredCredential {
     }
 }
 
+# Prompt for organization and project if not set
+if ($organization -eq "your-org-name" -or [string]::IsNullOrEmpty($organization)) {
+    $organization = Read-Host "Enter your Azure DevOps organization name"
+}
+
+if ($project -eq "your-project-name" -or [string]::IsNullOrEmpty($project)) {
+    $project = Read-Host "Enter your Azure DevOps project name"
+}
+
+# Set default PAT name if not provided
+if ($patName -eq "your-pat-name" -or [string]::IsNullOrEmpty($patName)) {
+    $tempPatName = "AzureDevOps-PAT-$organization"
+    # Check if the credential exists
+    $cmdOutput = cmdkey /list:$tempPatName 2>$null
+    if ($cmdOutput -match "Target: $tempPatName") {
+        $patName = $tempPatName
+    }
+    else {
+        # If not found, prompt for a new PAT name
+        $patName = Read-Host "Enter a name for your Personal Access Token (PAT) in Credential Manager (default: AzureDevOps-PAT-$organization)"
+        if ([string]::IsNullOrEmpty($patName)) {
+            $patName = "AzureDevOps-PAT-$organization"
+        }
+    }
+}
+
 # Retrieve PAT from Windows Credential Manager or prompt user
 try {
-    # Prompt for organization and project if not set
-    if ($organization -eq "your-org-name" -or [string]::IsNullOrEmpty($organization)) {
-        $organization = Read-Host "Enter your Azure DevOps organization name"
-    }
-
-    if ($project -eq "your-project-name" -or [string]::IsNullOrEmpty($project)) {
-        $project = Read-Host "Enter your Azure DevOps project name"
-    }    
-
-    # default $patName to "AzureDevOps-PAT" if not provided
-    if ($patName -eq "your-pat-name" -or [string]::IsNullOrEmpty($patName)) {
-        $tempPatName = "AzureDevOps-PAT-$organization"
-        # check to see if the credential exists
-        $cmdOutput = cmdkey /list:$tempPatName 2>$null
-        if ($cmdOutput -match "Target: $tempPatName") {
-            $patName = $tempPatName
-        }
-        else {
-            # If not found, prompt for a new PAT name
-            $patName = Read-Host "Enter a name for your Personal Access Token (PAT) in Credential Manager (default: AzureDevOps-PAT-$organization)"
-            if ([string]::IsNullOrEmpty($patName)) {
-                $patName = "AzureDevOps-PAT-$organization"
-            }
-        }
-    }
-
     $credential = Get-StoredCredential -Target $patName
     $pat = $credential.GetNetworkCredential().Password
     Write-Host "Successfully retrieved PAT from Credential Manager" -ForegroundColor Green
@@ -110,6 +113,7 @@ function Start-Pipeline {
     try {
         Write-Host "Starting $PipelineName on branch $BranchRef..." -ForegroundColor Yellow
         $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
+        Write-Host "Successfully started $PipelineName (Run ID: $($response.id))" -ForegroundColor Green
         return $response.id
     }
     catch {
@@ -124,18 +128,32 @@ function Wait-PipelineCompletion {
     
     $uri = "https://dev.azure.com/$organization/$project/_apis/pipelines/runs/$RunId?api-version=7.0"
     
-    do {
-        Start-Sleep -Seconds 30
-        $run = Invoke-RestMethod -Uri $uri -Headers $headers
-        Write-Host "$PipelineName status: $($run.state)" -ForegroundColor Cyan
-    } while ($run.state -eq "inProgress")
-    
-    if ($run.result -eq "succeeded") {
-        Write-Host "$PipelineName completed successfully!" -ForegroundColor Green
-        return $true
+    try {
+        do {
+            Start-Sleep -Seconds 30
+            $run = Invoke-RestMethod -Uri $uri -Headers $headers
+            Write-Host "$PipelineName status: $($run.state)" -ForegroundColor Cyan
+        } while ($run.state -eq "inProgress")
+        
+        if ($run.result -eq "succeeded") {
+            Write-Host "$PipelineName completed successfully!" -ForegroundColor Green
+            return $true
+        }
+        elseif ($run.result -eq "failed") {
+            Write-Host "$PipelineName failed!" -ForegroundColor Red
+            return $false
+        }
+        elseif ($run.result -eq "canceled") {
+            Write-Host "$PipelineName was canceled!" -ForegroundColor Yellow
+            return $false
+        }
+        else {
+            Write-Host "$PipelineName completed with result: $($run.result)" -ForegroundColor Yellow
+            return $false
+        }
     }
-    else {
-        Write-Host "$PipelineName failed with result: $($run.result)" -ForegroundColor Red
+    catch {
+        Write-Error "Failed to check status for $PipelineName`: $($_.Exception.Message)"
         return $false
     }
 }
