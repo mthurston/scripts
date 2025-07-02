@@ -5,13 +5,35 @@ $organization = "your-org-name"
 $project = "your-project-name"
 $patName = "your-pat-name" # Optional: Name for the PAT in Credential Manager
 
+# Pipeline definitions (replace with your actual pipeline IDs)
+$pipelines = @(
+    @{ Name = "Pipeline 1"; Id = 123; Ref = "refs/heads/main" }, 
+    @{ Name = "Pipeline 2"; Id = 456; Ref = "refs/heads/develop" }, 
+    @{ Name = "Pipeline 3"; Id = 789; Ref = "refs/heads/feature-branch" } 
+)
+
+# Function to get stored credential (moved to top)
+function Get-StoredCredential {
+    param([string]$Target)
+    
+    try {
+        $cmdOutput = cmdkey /list:$Target 2>$null
+        if ($cmdOutput -match "Password: (.+)") {
+            $password = $matches[1].Trim()
+            $securePassword = ConvertTo-SecureString -String $password -AsPlainText -Force
+            return New-Object System.Management.Automation.PSCredential("pat", $securePassword)
+        }
+        else {
+            throw "Credential not found"
+        }
+    }
+    catch {
+        throw "Failed to retrieve credential: $_"
+    }
+}
+
 # Retrieve PAT from Windows Credential Manager or prompt user
 try {
-    # default $patName to "AzureDevOps-PAT" if not provided
-    if ($patName -eq "your-pat-name" -or [string]::IsNullOrEmpty($patName)) {
-        $patName = "AzureDevOps-PAT"
-    }
-        
     # Prompt for organization and project if not set
     if ($organization -eq "your-org-name" -or [string]::IsNullOrEmpty($organization)) {
         $organization = Read-Host "Enter your Azure DevOps organization name"
@@ -20,6 +42,23 @@ try {
     if ($project -eq "your-project-name" -or [string]::IsNullOrEmpty($project)) {
         $project = Read-Host "Enter your Azure DevOps project name"
     }    
+
+    # default $patName to "AzureDevOps-PAT" if not provided
+    if ($patName -eq "your-pat-name" -or [string]::IsNullOrEmpty($patName)) {
+        $tempPatName = "AzureDevOps-PAT-$organization"
+        # check to see if the credential exists
+        $cmdOutput = cmdkey /list:$tempPatName 2>$null
+        if ($cmdOutput -match "Target: $tempPatName") {
+            $patName = $tempPatName
+        }
+        else {
+            # If not found, prompt for a new PAT name
+            $patName = Read-Host "Enter a name for your Personal Access Token (PAT) in Credential Manager (default: AzureDevOps-PAT-$organization)"
+            if ([string]::IsNullOrEmpty($patName)) {
+                $patName = "AzureDevOps-PAT-$organization"
+            }
+        }
+    }
 
     $credential = Get-StoredCredential -Target $patName
     $pat = $credential.GetNetworkCredential().Password
@@ -36,8 +75,8 @@ catch {
     $saveCredentials = Read-Host "Would you like to save these credentials to Windows Credential Manager? (y/n)"
     if ($saveCredentials -eq 'y' -or $saveCredentials -eq 'Y') {
         try {
-            # Store in credential manager
-            Start-Process -FilePath "cmdkey" -ArgumentList "/generic:AzureDevOps-PAT", "/user:pat", "/pass:$pat" -Wait -WindowStyle Hidden
+            # Store in credential manager using the variable name
+            Start-Process -FilePath "cmdkey" -ArgumentList "/generic:$patName", "/user:pat", "/pass:$pat" -Wait -WindowStyle Hidden
             Write-Host "Credentials saved to Windows Credential Manager" -ForegroundColor Green
         }
         catch {
@@ -46,13 +85,6 @@ catch {
     }
 }
 
-# Pipeline definitions (replace with your actual pipeline IDs)
-$pipelines = @(
-    @{ Name = "Pipeline 1"; Id = 123; Ref = "refs/heads/main" }, 
-    @{ Name = "Pipeline 2"; Id = 456; Ref = "refs/heads/develop" }, 
-    @{ Name = "Pipeline 3"; Id = 789; Ref = "refs/heads/feature-branch" } 
-)
-
 # Create authentication header
 $encodedPat = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes(":$pat"))
 $headers = @{
@@ -60,34 +92,23 @@ $headers = @{
     "Content-Type" = "application/json"
 }
 
-# Function to get stored credential
-function Get-StoredCredential {
-    param([string]$Target)
-    
-    Add-Type -AssemblyName System.Web
-    $credential = New-Object System.Management.Automation.PSCredential("pat", (ConvertTo-SecureString -String (cmdkey /list:$Target 2>$null | Select-String "Password:" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }) -AsPlainText -Force))
-    return $credential
-}
-
-# ...existing code...
-
 # Function to trigger pipeline
 function Start-Pipeline {
-    param($PipelineId, $PipelineName)
+    param($PipelineId, $PipelineName, $BranchRef = "refs/heads/main")
     
     $uri = "https://dev.azure.com/$organization/$project/_apis/pipelines/$PipelineId/runs?api-version=7.0"
     $body = @{
         resources = @{
             repositories = @{
                 self = @{
-                    refName = "refs/heads/main" # or your target branch
+                    refName = $BranchRef
                 }
             }
         }
     } | ConvertTo-Json -Depth 3
     
     try {
-        Write-Host "Starting $PipelineName..." -ForegroundColor Yellow
+        Write-Host "Starting $PipelineName on branch $BranchRef..." -ForegroundColor Yellow
         $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
         return $response.id
     }
@@ -121,7 +142,7 @@ function Wait-PipelineCompletion {
 
 # Execute pipelines in sequence
 foreach ($pipeline in $pipelines) {
-    $runId = Start-Pipeline -PipelineId $pipeline.Id -PipelineName $pipeline.Name
+    $runId = Start-Pipeline -PipelineId $pipeline.Id -PipelineName $pipeline.Name -BranchRef $pipeline.Ref
     
     if ($runId) {
         $success = Wait-PipelineCompletion -RunId $runId -PipelineName $pipeline.Name
