@@ -322,14 +322,9 @@ function Test-RabbitMQConnection {
     }
     
     try {
-        # Check if exchange still exists before trying to delete it
-        $exchange = Invoke-RestMethod -Uri "$baseUrl/exchanges/$vhostEncoded/$testExchangeName" -Headers $headers -ErrorAction SilentlyContinue
-        if ($exchange) {
-            Invoke-RestMethod -Uri "$baseUrl/exchanges/$vhostEncoded/$testExchangeName" -Method DELETE -Headers $headers
-            Write-Host "✓ Deleted test exchange" -ForegroundColor Green
-        } else {
-            Write-Host "✓ Test exchange already cleaned up (auto-deleted)" -ForegroundColor Green
-        }
+        # Directly attempt to delete the test exchange
+        Invoke-RestMethod -Uri "$baseUrl/exchanges/$vhostEncoded/$testExchangeName" -Method DELETE -Headers $headers
+        Write-Host "✓ Deleted test exchange" -ForegroundColor Green
     }
     catch {
         if ($_.Exception.Response.StatusCode -eq 404) {
