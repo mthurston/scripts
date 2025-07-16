@@ -140,7 +140,7 @@ function Test-RabbitMQConnection {
         Write-TestResult "Virtual Host Access" $false "Failed to access virtual hosts: $($_.Exception.Message)"
         $allTestsPassed = $false
     }
-      # Test 3: User Permissions
+# Test 3: User Permissions
     try {
         # First, check if the user exists
         $user = Invoke-RestMethod -Uri "$baseUrl/users/$Username" -Headers $headers
