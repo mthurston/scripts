@@ -79,7 +79,7 @@ Or manually place the `RabbitMQ.Client.dll` in the script directory.
 
 ## What the Script Tests
 
-The script performs 11 comprehensive tests:
+The script performs 12 comprehensive tests:
 
 1. **Management API Connection** - Basic connectivity to RabbitMQ Management API
 2. **Virtual Host Access** - Verifies virtual host exists and is accessible
