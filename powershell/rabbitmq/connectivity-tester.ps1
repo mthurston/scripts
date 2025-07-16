@@ -1,14 +1,15 @@
 # RabbitMQ Connectivity Test Script
 # This script verifies RabbitMQ server connectivity using the Management API and AMQP protocol
 
-param(    [string]$RabbitMQHost = "localhost",
-    [int]$ManagementPort = 15672,
-    [int]$AMQPPort = 5672,
-    [string]$Username = "guest",
-    [string]$Password = "guest",
-    [string]$VirtualHost = "/",
-    [switch]$Verbose,
-    [switch]$SkipAMQPTest = $false
+param (
+    [string] $RabbitMQHost = "localhost",
+    [int] $ManagementPort = 15672,
+    [int] $AMQPPort = 5672,
+    [string] $Username = "guest",
+    [string] $Password = "guest",
+    [string] $VirtualHost = "/",
+    [switch] $Verbose,
+    [switch] $SkipAMQPTest = $false
 )
 
 # Configuration
