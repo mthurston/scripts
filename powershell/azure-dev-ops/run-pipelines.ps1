@@ -141,21 +141,21 @@ function Start-Pipeline {
     # Add template parameters if provided
     if ($TemplateParameters -and $TemplateParameters.Count -gt 0) {
         $body.templateParameters = $TemplateParameters
-        Write-Host "Template parameters: $($TemplateParameters | ConvertTo-Json -Compress)" -ForegroundColor Gray
+        Write-Verbose "Template parameters: $($TemplateParameters | ConvertTo-Json -Compress)"
     }
     
     $bodyJson = $body | ConvertTo-Json -Depth 3
     
     try {
-        Write-Host "Starting $PipelineName on branch $BranchRef..." -ForegroundColor Yellow
-        Write-Host "Request body: $bodyJson" -ForegroundColor Gray
+        Write-Information "Starting $PipelineName on branch $BranchRef..."
+        Write-Verbose "Request body: $bodyJson"
         $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $bodyJson
-        Write-Host "Successfully started $PipelineName (Run ID: $($response.id))" -ForegroundColor Green
+        Write-Information "Successfully started $PipelineName (Run ID: $($response.id))"
         
         # Get the actual run details to see what branch it's using
         $runUri = "https://dev.azure.com/$organization/$project/_apis/pipelines/$PipelineId/runs/$($response.id)?api-version=7.0"
         $runDetails = Invoke-RestMethod -Uri $runUri -Headers $headers
-        Write-Host "Actual branch used: $($runDetails.resources.repositories.self.refName)" -ForegroundColor Cyan
+        Write-Information "Actual branch used: $($runDetails.resources.repositories.self.refName)"
         
         return $response.id
     }
