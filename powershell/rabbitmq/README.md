@@ -1,7 +1,7 @@
 # RabbitMQ Connectivity Test Script Usage
 
 ## Overview
-The `dev_rabbitmq_test.ps1` script is a comprehensive RabbitMQ connectivity verification tool that tests all major components of your RabbitMQ server.
+The `connectivity-tester.ps1` script is a comprehensive RabbitMQ connectivity verification tool that tests all major components of your RabbitMQ server.
 
 ## Default Configuration
 The script uses these default values:
@@ -17,43 +17,43 @@ The script uses these default values:
 ### 1. Test with Default Settings
 ```powershell
 # Test local RabbitMQ with default guest/guest credentials
-.\dev_rabbitmq_test.ps1
+.\connectivity-tester.ps1
 ```
 
 ### 2. Test with Custom Credentials
 ```powershell
 # Test with your custom username and password
-.\dev_rabbitmq_test.ps1 -Username "myuser" -Password "mypassword"
+.\connectivity-tester.ps1 -Username "myuser" -Password "mypassword"
 ```
 
 ### 3. Test Custom Virtual Host
 ```powershell
 # Test a specific virtual host
-.\dev_rabbitmq_test.ps1 -Username "myuser" -Password "mypassword" -VirtualHost "production"
+.\connectivity-tester.ps1 -Username "myuser" -Password "mypassword" -VirtualHost "production"
 ```
 
 ### 4. Test Remote RabbitMQ Server
 ```powershell
 # Test a remote RabbitMQ server
-.\dev_rabbitmq_test.ps1 -RabbitMQHost "rabbitmq.example.com" -Username "admin" -Password "secret123"
+.\connectivity-tester.ps1 -RabbitMQHost "rabbitmq.example.com" -Username "admin" -Password "secret123"
 ```
 
 ### 5. Test with Custom Ports
 ```powershell
 # Test with non-standard ports
-.\dev_rabbitmq_test.ps1 -ManagementPort 8080 -AMQPPort 5673
+.\connectivity-tester.ps1 -ManagementPort 8080 -AMQPPort 5673
 ```
 
 ### 6. Verbose Output for Debugging
 ```powershell
 # Get detailed output for troubleshooting
-.\dev_rabbitmq_test.ps1 -Username "myuser" -Password "mypassword" -Verbose
+.\connectivity-tester.ps1 -Username "myuser" -Password "mypassword" -Verbose
 ```
 
 ### 7. Complete Custom Configuration
 ```powershell
 # Test with all custom parameters
-.\dev_rabbitmq_test.ps1 -RabbitMQHost "rabbitmq.internal.com" `
+.\connectivity-tester.ps1 -RabbitMQHost "rabbitmq.internal.com" `
                         -ManagementPort 8080 `
                         -AMQPPort 5673 `
                         -Username "testuser" `
@@ -65,7 +65,7 @@ The script uses these default values:
 ### 8. Skip AMQP Protocol Testing
 ```powershell
 # Skip AMQP testing if RabbitMQ .NET Client is not available or not needed
-.\dev_rabbitmq_test.ps1 -SkipAMQPTest
+.\connectivity-tester.ps1 -SkipAMQPTest
 ```
 
 ### 9. Enable AMQP Protocol Testing
@@ -101,7 +101,7 @@ The RabbitMQ default `guest` user only works from `localhost`. If you're testing
 
 ```powershell
 # Basic test with defaults
-.\dev_rabbitmq_test.ps1
+.\connectivity-tester.ps1
 ```
 
 ### Custom User Setup
@@ -124,7 +124,7 @@ rabbitmqctl set_permissions -p test-environment testuser ".*" ".*" ".*"
 
 Then test with:
 ```powershell
-.\dev_rabbitmq_test.ps1 -Username "testuser" -Password "testpass123" -VirtualHost "test-environment"
+.\connectivity-tester.ps1 -Username "testuser" -Password "testpass123" -VirtualHost "test-environment"
 ```
 
 ## Expected Output
@@ -217,7 +217,7 @@ The script returns appropriate exit codes for automation:
 
 ```powershell
 # In a CI/CD pipeline
-.\dev_rabbitmq_test.ps1 -Username "ci-user" -Password "ci-password"
+.\connectivity-tester.ps1 -Username "ci-user" -Password "ci-password"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "RabbitMQ connectivity test failed"
     exit 1
