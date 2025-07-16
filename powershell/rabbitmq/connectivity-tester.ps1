@@ -45,7 +45,8 @@ $headers = @{
 }
 
 # Base URLs
-$baseUrl = "http://${RabbitMQHost}:${ManagementPort}/api"
+$protocol = if ($UseHTTP) { "http" } else { "https" }
+$baseUrl = "${protocol}://${RabbitMQHost}:${ManagementPort}/api"
 $vhostEncoded = [System.Uri]::EscapeDataString($VirtualHost)
 
 function Write-TestResult {
