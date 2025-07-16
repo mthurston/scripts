@@ -168,7 +168,7 @@ function Start-Pipeline {
 # Function to check pipeline status
 function Wait-PipelineCompletion {
     param($RunId, $PipelineName, $PipelineId)
-    $uri = "https://dev.azure.com/$organization/$project/_apis/pipelines/$PipelineId/runs/$RunId`?api-version=7.0"
+    $uri = "https://dev.azure.com/$organization/$project/_apis/pipelines/$PipelineId/runs/$RunId?api-version=7.0"
     
     try {
         do {
