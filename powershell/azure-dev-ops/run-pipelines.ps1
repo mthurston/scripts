@@ -172,7 +172,7 @@ function Wait-PipelineCompletion {
     
     try {
         do {
-            Start-Sleep -Seconds 60
+            Start-Sleep -Seconds $PollIntervalSeconds
             $run = Invoke-RestMethod -Uri $uri -Headers $headers
             Write-Host "$PipelineName status: $($run.state)" -ForegroundColor Cyan
         } while ($run.state -eq "inProgress")
