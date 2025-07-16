@@ -139,7 +139,7 @@ function Start-Pipeline {
     }
     
     # Add template parameters if provided
-    if ($TemplateParameters.Count -gt 0) {
+    if ($TemplateParameters -and $TemplateParameters.Count -gt 0) {
         $body.templateParameters = $TemplateParameters
         Write-Host "Template parameters: $($TemplateParameters | ConvertTo-Json -Compress)" -ForegroundColor Gray
     }
