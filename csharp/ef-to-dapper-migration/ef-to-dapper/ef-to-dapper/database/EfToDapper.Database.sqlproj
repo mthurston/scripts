@@ -1,0 +1,20 @@
+<!--
+  SQL Database Project for the EF → Dapper Workshop.
+
+  Open in VS Code with the MSSQL / SQL Database Projects extension:
+    1. Install "SQL Database Projects" extension (ms-mssql.sql-database-projects-vscode)
+    2. In the "Database Projects" panel, click "Open Existing" and select this file
+    3. Right-click the project → "Publish" → target (localdb)\mssqllocaldb, database EfToDapperDemo
+    4. Start the ASP.NET app — EnsureCreated() will succeed and the seeder will run
+
+  The schema here mirrors the EF Core model exactly so EnsureCreated() is a no-op
+  (schema already exists) and the seeder can be re-run safely (it is idempotent).
+-->
+<Project Sdk="Microsoft.Build.Sql/2.1.0">
+  <PropertyGroup>
+    <Name>EfToDapper.Database</Name>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.Sql160DatabaseSchemaProvider</DSP>
+    <ModelCollation>1033, CI_AS</ModelCollation>
+    <ProjectGuid>{00000000-0000-0000-0000-000000000000}</ProjectGuid>
+  </PropertyGroup>
+</Project>
