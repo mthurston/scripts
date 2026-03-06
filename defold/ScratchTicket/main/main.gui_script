@@ -1,0 +1,211 @@
+local game_state = require("main.modules.game_state")
+local ticket_mod  = require("main.modules.ticket")
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Constants
+-- ────────────────────────────────────────────────────────────────────────────
+
+local SYMBOL_COLORS = {
+    ["7"]   = vmath.vector4(1.00, 0.20, 0.20, 1),
+    ["$"]   = vmath.vector4(1.00, 0.84, 0.00, 1),
+    ["*"]   = vmath.vector4(0.00, 0.75, 1.00, 1),
+    ["BAR"] = vmath.vector4(1.00, 0.60, 0.00, 1),
+    ["CH"]  = vmath.vector4(1.00, 0.40, 0.70, 1),
+}
+
+local COLOR_GRAY   = vmath.vector4(0.55, 0.55, 0.57, 1)
+local COLOR_CREAM  = vmath.vector4(0.98, 0.97, 0.76, 1)
+local COLOR_GREEN  = vmath.vector4(0.00, 0.63, 0.00, 1)
+local COLOR_NOGRAY = vmath.vector4(0.31, 0.31, 0.31, 1)
+local COLOR_GOLD   = vmath.vector4(1.00, 0.84, 0.00, 1)
+local COLOR_RED    = vmath.vector4(0.80, 0.36, 0.36, 1)
+
+-- All node IDs per screen — used for bulk enable/disable
+local VENDING_NODES = {
+    "vm_bg", "vm_machine_body", "vm_machine_inner", "vm_title_bar",
+    "vm_title", "vm_subtitle", "vm_display", "vm_ticket_name",
+    "vm_price", "vm_prize", "vm_balance_text", "vm_buy_button",
+    "vm_buy_text", "vm_stats_text",
+    -- vm_insufficient_text is handled separately (conditionally shown)
+    "vm_insufficient_text",
+}
+
+local SCRATCH_NODES = {
+    "st_ticket_border", "st_ticket_bg", "st_ticket_header",
+    "st_title", "st_subtitle", "st_prize_text",
+    "st_hint_text", "st_balance_hud", "st_balance_text",
+    -- result nodes shown after fully scratched:
+    "st_result_bg", "st_result_text", "st_continue_text",
+}
+-- Add the 9×3 cell nodes
+for i = 1, 9 do
+    table.insert(SCRATCH_NODES, "st_cell_"    .. i)
+    table.insert(SCRATCH_NODES, "st_scratch_" .. i)
+    table.insert(SCRATCH_NODES, "st_symbol_"  .. i)
+end
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- State
+-- ────────────────────────────────────────────────────────────────────────────
+
+local current_screen    = "vending"  -- "vending" | "scratch"
+local current_ticket    = nil
+local result_processed  = false
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Helpers
+-- ────────────────────────────────────────────────────────────────────────────
+
+local function set_all(nodes, enabled)
+    for _, id in ipairs(nodes) do
+        gui.set_enabled(gui.get_node(id), enabled)
+    end
+end
+
+local function update_vending_ui()
+    gui.set_text(gui.get_node("vm_balance_text"),
+        string.format("BALANCE:  $%.2f", game_state.balance))
+    gui.set_text(gui.get_node("vm_stats_text"),
+        string.format("Tickets: %d     Wins: %d",
+            game_state.tickets_bought, game_state.wins))
+
+    local can_afford = game_state.balance >= ticket_mod.COST
+    gui.set_enabled(gui.get_node("vm_insufficient_text"), not can_afford)
+    gui.set_color(gui.get_node("vm_buy_button"),
+        can_afford and COLOR_GREEN or COLOR_NOGRAY)
+    gui.set_text(gui.get_node("vm_buy_text"),
+        can_afford and "BUY  [SPACE]" or "NO FUNDS")
+end
+
+local function reveal_cell(i)
+    local cell = current_ticket.cells[i]
+    if cell.scratched then return end
+    cell.scratched = true
+
+    gui.set_color(gui.get_node("st_cell_"    .. i), COLOR_CREAM)
+    gui.set_enabled(gui.get_node("st_scratch_" .. i), false)
+
+    local sym_node = gui.get_node("st_symbol_" .. i)
+    gui.set_text(sym_node, cell.symbol)
+    gui.set_color(sym_node, SYMBOL_COLORS[cell.symbol] or vmath.vector4(1,1,1,1))
+    gui.set_enabled(sym_node, true)
+end
+
+local function check_complete()
+    if result_processed then return end
+    if not ticket_mod.is_fully_scratched(current_ticket) then return end
+    result_processed = true
+
+    local won = ticket_mod.check_win(current_ticket)
+    if won then
+        game_state.add_winnings(ticket_mod.WIN_PRIZE)
+    end
+
+    local msg_text = won
+        and string.format("*** YOU WIN $%.2f! ***", ticket_mod.WIN_PRIZE)
+        or  "Better luck next time!"
+
+    gui.set_enabled(gui.get_node("st_result_bg"),   true)
+    gui.set_enabled(gui.get_node("st_continue_text"), true)
+    gui.set_enabled(gui.get_node("st_hint_text"),   false)
+
+    local result_node = gui.get_node("st_result_text")
+    gui.set_text(result_node, msg_text)
+    gui.set_color(result_node, won and COLOR_GOLD or COLOR_RED)
+    gui.set_enabled(result_node, true)
+
+    -- Refresh balance HUD
+    gui.set_text(gui.get_node("st_balance_text"),
+        string.format("Balance: $%.2f", game_state.balance))
+end
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Screen transitions
+-- ────────────────────────────────────────────────────────────────────────────
+
+local function show_vending()
+    set_all(SCRATCH_NODES, false)
+    set_all(VENDING_NODES, true)
+    current_screen = "vending"
+    update_vending_ui()
+end
+
+local function show_scratch(ticket)
+    current_ticket   = ticket
+    result_processed = false
+
+    set_all(VENDING_NODES, false)
+    set_all(SCRATCH_NODES, true)
+    current_screen = "scratch"
+
+    -- Reset all cells to un-scratched appearance
+    for i = 1, 9 do
+        gui.set_color(gui.get_node("st_cell_"    .. i), COLOR_GRAY)
+        gui.set_enabled(gui.get_node("st_scratch_" .. i), true)
+        gui.set_enabled(gui.get_node("st_symbol_"  .. i), false)
+    end
+
+    -- Hide result/continue until ticket is fully scratched
+    gui.set_enabled(gui.get_node("st_result_bg"),    false)
+    gui.set_enabled(gui.get_node("st_result_text"),  false)
+    gui.set_enabled(gui.get_node("st_continue_text"), false)
+    gui.set_enabled(gui.get_node("st_hint_text"),    true)
+
+    gui.set_text(gui.get_node("st_balance_text"),
+        string.format("Balance: $%.2f", game_state.balance))
+end
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Lifecycle
+-- ────────────────────────────────────────────────────────────────────────────
+
+function init(self)
+    msg.post(".", "acquire_input_focus")
+    math.randomseed(os.time())
+    show_vending()
+end
+
+function on_input(self, action_id, action)
+    if action_id == hash("quit") and action.pressed then
+        sys.exit(0)
+        return true
+    end
+
+    -- ── Vending screen ──────────────────────────────────────────────────────
+    if current_screen == "vending" then
+        local buy = false
+
+        if action_id == hash("space") and action.pressed then
+            buy = true
+        elseif action_id == hash("touch") and action.pressed then
+            buy = gui.pick_node(gui.get_node("vm_buy_button"), action.x, action.y)
+        end
+
+        if buy and game_state.try_buy_ticket() then
+            show_scratch(ticket_mod.new())
+        end
+
+    -- ── Scratch screen ──────────────────────────────────────────────────────
+    elseif current_screen == "scratch" then
+        if action_id == hash("scratch_all") and action.pressed then
+            for i = 1, 9 do reveal_cell(i) end
+            check_complete()
+
+        elseif action_id == hash("touch") and action.pressed then
+            for i = 1, 9 do
+                if gui.pick_node(gui.get_node("st_cell_" .. i), action.x, action.y) then
+                    reveal_cell(i)
+                    check_complete()
+                    break
+                end
+            end
+
+        elseif action_id == hash("space") and action.pressed then
+            if ticket_mod.is_fully_scratched(current_ticket) then
+                show_vending()
+            end
+        end
+    end
+
+    return true
+end

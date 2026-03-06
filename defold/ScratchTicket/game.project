@@ -1,0 +1,54 @@
+[project]
+title = Lucky Scratch
+version = 1.0
+write_log = 0
+
+[display]
+width = 800
+height = 600
+high_dpi = 0
+samples = 0
+fullscreen = 0
+update_frequency = 60
+variable_dt = 0
+display_profiles = /builtins/render/default.display_profilesc
+render = /builtins/render/default.render
+
+[bootstrap]
+main_collection = /main/main.collection
+
+[graphics]
+default_texture_min_filter = linear
+default_texture_mag_filter = linear
+max_draw_calls = 1024
+max_characters = 8192
+max_debug_vertices = 10000
+texture_profiles = /builtins/graphics/default.texture_profiles
+
+[shader]
+output_spirv = 0
+
+[script]
+shared_state = 1
+
+[lua]
+bytecode_delta = 0
+
+[sound]
+gain = 1.0
+max_sound_data = 128
+max_sound_buffers = 32
+max_sound_sources = 16
+max_sound_instances = 256
+use_thread = 1
+
+[resource]
+http_cache_size = 0
+uri = dmengine://localhost
+max_resources = 1024
+
+[input]
+repeat_delay = 0.5
+repeat_interval = 0.2
+use_accelerometer = 1
+game_binding = /input/game.input_bindings
